@@ -2,7 +2,7 @@ import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 
-TOKEN = os.environ.get("TOKEN")
+TOKEN ="9263175788:AAEpjhIejWuvNSZr_2r4NtiTZJrRlbiKbjY"
 BOT_USERNAME = "korarwana_bot"
 ADMIN_ID = 8987587944
 WHATSAPP_NUMBER = "0735966886"
