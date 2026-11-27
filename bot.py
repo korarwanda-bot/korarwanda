@@ -129,4 +129,173 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data == "cancel_withdraw":
         if user.id in pending_withdraw:
-            info =
+            info = pending_withdraw.pop(user.id)
+            await context.bot.send_message(chat_id=ADMIN_ID, text=f"❌ {user.first_name} ({user.id}) YACANCELIZE KUBIKUZA kwe kwa {info['amount']} Rwf.")
+            await query.message.reply_text("✅ Kubikuza kwawe kwacancelizwe. Ubu ushobora gusaba ikindi.", reply_markup=get_main_menu())
+        return
+
+    if data == "check_done":
+        keyboard = [[InlineKeyboardButton("✅ EMEZA +100 Rwf", callback_data=f"approve_work_{user.id}")],[InlineKeyboardButton("❌ OYA", callback_data=f"reject_work_{user.id}")]]
+        await context.bot.send_message(chat_id=ADMIN_ID, text=f"🔍 {user.first_name} (@{user.username} | {user.id}) AVUZE KO YAKOZE!\nBalance ye: {get_balance(user.id)} Rwf", reply_markup=InlineKeyboardMarkup(keyboard))
+        await query.message.reply_text("Sawa! Wohereje ko wakoze. Tegereza Admin akugenzure. ⏳", reply_markup=get_main_menu())
+        return
+    if user.id != ADMIN_ID: return
+
+    if data.startswith("approve_wd_"):
+        target_id = int(data.split("_")[2])
+        if target_id in pending_withdraw:
+            info = pending_withdraw.pop(target_id)
+            user_balances[target_id] = get_balance(target_id) - info['amount']
+            await context.bot.send_message(chat_id=target_id, text=f"🎉 KUBIKUZA KWEMEJWE!\n\n💸 Woherejwe: {info['amount']} Rwf\n📱 Kuri: {info['number']}\n💰 Balance isigaye: {get_balance(target_id)} Rwf", reply_markup=get_main_menu())
+            await query.message.reply_text(f"✅ Wemeje kubikuza kwa {target_id}: {info['amount']} Rwf")
+        return
+    if data.startswith("reject_wd_"):
+        target_id = int(data.split("_")[2])
+        if target_id in pending_withdraw:
+            info = pending_withdraw.pop(target_id)
+            await context.bot.send_message(chat_id=target_id, text=f"❌ Kubikuza kwawe kwa {info['amount']} Rwf ntikwemejwe. Ongera ugerageze cyangwa ubaze Admin.", reply_markup=get_main_menu())
+            await query.message.reply_text(f"❌ Wanze kubikuza kwa {target_id}")
+        return
+    if data.startswith("write_link_"):
+        target_id = int(data.split("_")[2])
+        waiting_link_for[ADMIN_ID] = target_id
+        await query.message.reply_text(f"✍️ Sawa! Andika LINK ushaka kohereza kuri {target_id} ubu:")
+        return
+    if data.startswith("approve_work_"):
+        target_id = int(data.split("_")[2])
+        # NSHYA: Iyo wemeje akazi, pending_link isibama, ashobora gusaba indi
+        if target_id in pending_link:
+            pending_link.pop(target_id)
+        new_balance = add_money(target_id, 100)
+        name = user_names.get(target_id, "Umuntu")
+        await context.bot.send_message(chat_id=target_id, text=f"🎉 CONGRATS {name}!\n\n✅ Wakorewe neza!\n💰 Wabonye: +100 Rwf\n💰 Balance yawe ubu: {new_balance} Rwf\n\nUbu ushobora gusaba indi link niba ushaka.", reply_markup=get_main_menu())
+        await query.message.reply_text(f"✅ Wemeje {target_id}! Yahawe 100. Balance: {new_balance}")
+        return
+    if data.startswith("reject_work_"):
+        target_id = int(data.split("_")[2])
+        # NSHYA: Iyo wanze, pending_link isibama, ashobora gusaba indi
+        if target_id in pending_link:
+            pending_link.pop(target_id)
+        await context.bot.send_message(chat_id=target_id, text="❌ Ntibyemejwe. Ongera ugerageze.", reply_markup=get_main_menu())
+        await query.message.reply_text(f"❌ Wanze {target_id}")
+        return
+    if data.startswith("askreply_"):
+        target_id = int(data.split("_")[1])
+        waiting_reply[ADMIN_ID] = target_id
+        await query.message.reply_text(f"✍️ Andika ubutumwa kuri {target_id}:")
+        return
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    text = update.message.text.strip()
+    user_names[user.id] = user.first_name
+
+    if user.id == ADMIN_ID and ADMIN_ID in waiting_link_for:
+        target_id = waiting_link_for.pop(ADMIN_ID)
+        # NSHYA: Iyo wohereje link, pending ihinduka link_sent
+        if target_id in pending_link:
+            pending_link[target_id] = "link_sent"
+        check_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("✅ NAKOZE - CHECK ✔️", callback_data="check_done")],[InlineKeyboardButton("❌ CANCEL LINK", callback_data="cancel_link")]])
+        await context.bot.send_message(chat_id=target_id, text=f"🔗 Dore link yo gukorera:\n\n{text}\n\n1. Fungura muri telephone irimo sim card nshya\n2. Kora verifying\n3. Nyuma ukande bouton hepfo 👇", reply_markup=check_keyboard)
+        await update.message.reply_text(f"✅ Link yoherejwe kuri {target_id}!")
+        return
+    if user.id == ADMIN_ID and ADMIN_ID in waiting_reply:
+        target_id = waiting_reply.pop(ADMIN_ID)
+        await context.bot.send_message(chat_id=target_id, text=f"💬 Ubutumwa buvuye kuri Admin:\n\n{text}", reply_markup=get_main_menu())
+        await update.message.reply_text(f"✅ Bwoherejwe kuri {target_id}")
+        return
+
+    # ===== 1. INGANO YO KUBIKUZA =====
+    if user.id in waiting_withdraw_amount:
+        clean = text.replace("Rwf","").replace("rwf","").replace(",","").replace(" ","").strip()
+        if not clean.isdigit():
+            await update.message.reply_text("⚠️ Oya! Andika imibare gusa.\n\nUrugero: 5000\n\nOngera wandike ingano ushaka kubikuza:", reply_markup=get_main_menu())
+            return
+        amount = int(clean)
+        bal = get_balance(user.id)
+        if amount <= 0:
+            await update.message.reply_text("⚠️ Ingano igomba kuba irenze 0. Andika imibare gusa, urugero: 5000", reply_markup=get_main_menu())
+            return
+        if amount > bal:
+            await update.message.reply_text(f"❌ Ntabwo ufite ayo mafaranga!\n\n💸 Ushaka kubikuza: {amount} Rwf\n💰 Balance yawe: {bal} Rwf gusa\n\nOngera wandike ingano itarenga {bal}, imibare gusa:\nUrugero: {bal}", reply_markup=get_main_menu())
+            return
+        waiting_withdraw_amount.pop(user.id)
+        waiting_withdraw_number[user.id] = amount
+        await update.message.reply_text(f"✅ Ushaka kubikuza {amount} Rwf.\n\nUbu andika numero yawe ya MTN/Airtel gusa, imibare gusa:\nUrugero: 0781234567", reply_markup=get_main_menu())
+        return
+
+    # ===== 2. NUMERO YO KUBIKUZA =====
+    if user.id in waiting_withdraw_number:
+        clean_num = text.replace(" ","").replace("+","").replace("-","").strip()
+        if not clean_num.isdigit() or len(clean_num) != 10 or not clean_num.startswith("07"):
+            await update.message.reply_text("⚠️ Oya! Numero siyo.\n\nAndika numero y'imibare 10 gusa itangira na 07.\nUrugero: 0781234567\n\nOngera wandike numero yawe:", reply_markup=get_main_menu())
+            return
+        amount = waiting_withdraw_number.pop(user.id)
+        pending_withdraw[user.id] = {"amount": amount, "number": clean_num, "name": user.first_name}
+        kb_admin = [[InlineKeyboardButton("✅ EMEZA", callback_data=f"approve_wd_{user.id}"), InlineKeyboardButton("❌ OYA", callback_data=f"reject_wd_{user.id}")]]
+        await context.bot.send_message(chat_id=ADMIN_ID, text=f"💸 GUSABA KUBIKUZA GUSHYA!\n\n👤 {user.first_name} (@{user.username} | {user.id})\n💸 Ingano: {amount} Rwf\n📱 Numero: {clean_num}\n💰 Balance ye: {get_balance(user.id)} Rwf", reply_markup=InlineKeyboardMarkup(kb_admin))
+        kb_user = [[InlineKeyboardButton("✅ CHECKING", callback_data="check_withdraw"), InlineKeyboardButton("❌ CANCEL", callback_data="cancel_withdraw")]]
+        await update.message.reply_text(f"✅ Gusaba kwawe kwakiriwe!\n\n💸 Ingano: {amount} Rwf\n📱 Numero: {clean_num}\n\nNiba wamaze kubona amafaranga, kanda CHECKING. Niba ushaka guhagarika, kanda CANCEL.", reply_markup=InlineKeyboardMarkup(kb_user))
+        return
+
+    if text == "🚀 Tangira Gukora":
+        # ===== NSHYA: KUBUZA GUSABA LINK YA 2 IYAMBERE ATARARANGIRA =====
+        if user.id in pending_link:
+            status = pending_link[user.id]
+            if status == "waiting_admin":
+                kb = [[InlineKeyboardButton("❌ CANCEL LINK", callback_data="cancel_link")]]
+                await update.message.reply_text("⚠️ Ufite link usabye itararangira!\n\nTegereza Admin akwoherereze link ya mbere.\nNiba ushaka guhagarika, kanda CANCEL LINK hepfo.", reply_markup=InlineKeyboardMarkup(kb))
+                return
+            elif status == "link_sent":
+                kb = [[InlineKeyboardButton("✅ NAKOZE - CHECK ✔️", callback_data="check_done")],[InlineKeyboardButton("❌ CANCEL LINK", callback_data="cancel_link")]]
+                await update.message.reply_text("⚠️ Ufite link warangije gusaba itararangira!\n\nBanza ukore link wagenewe, ukande NAKOZE - CHECK, cyangwa ukande CANCEL LINK mbere yo gusaba indi.", reply_markup=InlineKeyboardMarkup(kb))
+                return
+        if not ADMIN_AVAILABLE:
+            await update.message.reply_text(f"🔴 ADMIN NTAHARI UBU\n\nAzagaruka: Saa {ADMIN_RETURN_TIME}\nSubiza nyuma y'icyo gihe.\n\nCyamunara wandikire kuri WhatsApp: {WHATSAPP_NUMBER}", reply_markup=get_main_menu())
+            await context.bot.send_message(chat_id=ADMIN_ID, text=f"👀 {user.first_name} ({user.id}) Yaje gusaba link kandi NTAHARI. Azagaruka saa {ADMIN_RETURN_TIME}")
+            return
+        # NSHYA: Bika ko yasabye link
+        pending_link[user.id] = "waiting_admin"
+        keyboard = [[InlineKeyboardButton("✍️ ANDIKA LINK UMUHE UBU", callback_data=f"write_link_{user.id}")],[InlineKeyboardButton("💬 Musubize", callback_data=f"askreply_{user.id}")]]
+        await context.bot.send_message(chat_id=ADMIN_ID, text=f"🚀 {user.first_name} (@{user.username} | {user.id}) YASABYE LINK!", reply_markup=InlineKeyboardMarkup(keyboard))
+        await update.message.reply_text("Sawa! Admin ariho ubu. Agiye kukwandikira link vuba. ⏳", reply_markup=get_main_menu())
+        return
+    if text == "🕐 Admin Ariho?":
+        await update.message.reply_text(get_admin_status(), reply_markup=get_main_menu())
+        return
+    if text == "💰 Amafaranga Yanjye":
+        await update.message.reply_text(f"💰 {user.first_name}, Balance yawe: {get_balance(user.id)} Rwf", reply_markup=get_main_menu())
+        return
+    if text == "🤝 Tumira Inshuti":
+        invite_link = f"https://t.me/{BOT_USERNAME}?start={user.id}"
+        await update.message.reply_text(f"Tumira inshuti:\n\n{invite_link}", reply_markup=get_main_menu())
+        return
+    if text == "💸 Kubikuza":
+        if user.id in pending_withdraw:
+            info = pending_withdraw[user.id]
+            kb = [[InlineKeyboardButton("✅ CHECKING", callback_data="check_withdraw"), InlineKeyboardButton("❌ CANCEL", callback_data="cancel_withdraw")]]
+            await update.message.reply_text(f"⚠️ Ufite kubikuza usabye itararangira!\n\n💸 Ingano: {info['amount']} Rwf\n📱 Numero: {info['number']}\n\nBanza ukande CHECKING niba wamaze kubona, cyangwa CANCEL niba ushaka kuyihagarika, mbere yo gusaba indi.", reply_markup=InlineKeyboardMarkup(kb))
+            return
+        bal = get_balance(user.id)
+        if bal <= 0:
+            await update.message.reply_text(f"Balance yawe ni 0 Rwf. Banza ukore ubone amafaranga.", reply_markup=get_main_menu())
+            return
+        waiting_withdraw_amount[user.id] = True
+        await update.message.reply_text(f"💸 Balance yawe: {bal} Rwf\n\nAndika ingano ushaka kubikuza, imibare gusa:\nUrugero: 5000", reply_markup=get_main_menu())
+        return
+    if text == "❓ Ubufasha":
+        help_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("💬 Andikira kuri WhatsApp", url=WHATSAPP_LINK)]])
+        await update.message.reply_text(f"❓ UKENEYE UBUFASHA?\n\nWandikire kuri WhatsApp:\n\n📱 Nimero: {WHATSAPP_NUMBER}\n👇 Kanda bouton hepfo:", reply_markup=help_keyboard)
+        return
+    keyboard = [[InlineKeyboardButton("💬 Musubize", callback_data=f"askreply_{user.id}")], [InlineKeyboardButton("✍️ Andika Link", callback_data=f"write_link_{user.id}")]]
+    await context.bot.send_message(chat_id=ADMIN_ID, text=f"💬 UBUTUMWA!\nKuva: {user.first_name} (@{user.username} | {user.id})\nYanditse: {text}", reply_markup=InlineKeyboardMarkup(keyboard))
+    await update.message.reply_text("Murakoze! Ubutumwa bwawe bwakiriwe. ✅", reply_markup=get_main_menu())
+
+app = ApplicationBuilder().token(TOKEN).build()
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("ndahari", ndahari_command))
+app.add_handler(CommandHandler("ntahari", ntahari_command))
+app.add_handler(CallbackQueryHandler(button))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+print("Bot irimo gukora...")
+app.run_polling()
