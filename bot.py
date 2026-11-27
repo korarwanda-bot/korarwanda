@@ -94,4 +94,4 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("Nta link ufite.", reply_markup=kb_main())
         return
 
-    if text == "💰 Amafaranga Yanj
+        if text == "💰 Amafaranga Yanjye":
