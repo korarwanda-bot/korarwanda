@@ -17,7 +17,7 @@ def run_web():
     HTTPServer(("0.0.0.0", port), Handler).serve_forever()
 threading.Thread(target=run_web, daemon=True).start()
 
-TOKEN = os.environ.get("TOKEN") or "SHYIRAMO_TOKEN_YAWE_HANO"
+TOKEN = os.environ.get("TOKEN") or "9263175788:AAEpjhIejWuvNSZr_2r4NtiTZJrRlbiKbjY"
 BOT_USERNAME = "korarwana_bot"
 ADMIN_ID = 8987587944
 
