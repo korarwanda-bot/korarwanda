@@ -30,8 +30,8 @@ if "kubikuza_done" not in data:
     data["kubikuza_done"] = {}
 user_states = {}
 active_links = {}
-pending_kubikuza = {}  # {user_id: amount} - ari gutegereza
-last_kubikuza_time = {}  # kubuza spam
+pending_kubikuza = {}
+last_kubikuza_time = {}
 
 def get_balance(user_id):
     return data["balances"].get(str(user_id), 0)
@@ -100,39 +100,33 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("Byahagaritswe ✅.", reply_markup=kb_main())
         return
 
-    # --- YEGO BIKUZA: UBWENGE BWO KUBUZA KABIRI ---
     if text == "✅ Yego, Bikuza":
         if user_id not in pending_kubikuza:
             await update.message.reply_text("Nta kubikuza gutegereje.", reply_markup=kb_main())
             return
         amount = pending_kubikuza[user_id]
         bal = get_balance(user_id)
-        # 1. Niba amafaranga yagabanutse hagati aho
         if amount > bal:
             murekure(user_id)
             await update.message.reply_text(f"❌ Ufite {bal} Rwf gusa. Ntushobora kubikuza {amount} Rwf.", reply_markup=kb_main())
             return
-        # 2. Niba yasabye vuba cyane (spam - munsi y'iminota 1)
         now = time.time()
         if user_id in last_kubikuza_time and (now - last_kubikuza_time[user_id]) < 60:
             await update.message.reply_text("⏳ Tegereza gato, kubikuza kwawe kurimo gukorwa. Ntushobora kubikuza kabiri icyarimwe.", reply_markup=kb_main())
             return
-        # BIZIMA: Kura amafaranga, wandike ko yabikuje, funga
         data["balances"][str(user_id)] = bal - amount
-        # Bika ko yabikuje - ntabwo ashobora kubikuza uwo mubare ukundi ako kanya
         if str(user_id) not in data["kubikuza_done"]:
             data["kubikuza_done"][str(user_id)] = []
         data["kubikuza_done"][str(user_id)].append({"amount": amount, "time": now})
         save_data()
         last_kubikuza_time[user_id] = now
         murekure(user_id)
-        await update.message.reply_text(f"✅ Wabikuje {amount} Rwf!\nHasigaye: {get_balance(user_id)} Rwf\nAmafaranga yawe asigaye aragumaho, ntushobora kuyabikuza kabiri.", reply_markup=kb_main())
+        await update.message.reply_text(f"✅ Wabikuje {amount} Rwf!\nHasigaye: {get_balance(user_id)} Rwf", reply_markup=kb_main())
         try: await context.bot.send_message(ADMIN_ID, f"💸 Kubikuza: {user_id} yabikuje {amount} Rwf. Hasigaye {get_balance(user_id)} Rwf")
         except: pass
         return
 
     if text in ["🚀 Tangira Gukora", "💸 Kubikuza", "💰 Amafaranga Yanjye", "✅ Narangije Link", "/start"]:
-        # Niba afite kubikuza gutegereje, ntimurekure ngo asabe ukundi
         if user_id not in pending_kubikuza:
             murekure(user_id)
 
@@ -145,7 +139,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if text == "💰 Amafaranga Yanjye":
-        await update.message.reply_text(f"💰 Amafaranga yawe: {get_balance(user_id)} Rwf\nAragumaho kugeza uyabikuje rimwe.", reply_markup=kb_main())
+        await update.message.reply_text(f"💰 Amafaranga yawe: {get_balance(user_id)} Rwf", reply_markup=kb_main())
         return
 
     if text == "🚀 Tangira Gukora":
@@ -158,11 +152,9 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if text == "💸 Kubikuza":
-        # UBWENGE 1: Niba afite kubikuza gutegereje, mubwire
         if user_id in pending_kubikuza:
             await update.message.reply_text(f"⚠️ Ufite kubikuza gutegereje kwa {pending_kubikuza[user_id]} Rwf.\nEmeza cyangwa Cancel mbere yo gusaba ukundi.", reply_markup=kb_confirm())
             return
-        # UBWENGE 2: Niba yasabye vuba cyane, mubwire ategereze
         now = time.time()
         if user_id in last_kubikuza_time and (now - last_kubikuza_time[user_id]) < 60:
             await update.message.reply_text(f"⏳ Kubikuza kwawe kurimo gukorwa. Tegereza iminota 1 mbere yo gusaba ukundi.\nUfite: {get_balance(user_id)} Rwf", reply_markup=kb_main())
@@ -201,6 +193,6 @@ if __name__ == "__main__":
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle))
-    app.add_handler(MessageHandler(filters.PHOTO | filters.VOICE | filters.STICKER | filters.Document.ALL, handle_non_text))
+    app.add_handler(MessageHandler(filters.PHOTO | filters.VOICE | filters.Sticker.ALL | filters.Document.ALL, handle_non_text))
     print("Bot irimo gukora...")
     app.run_polling()
